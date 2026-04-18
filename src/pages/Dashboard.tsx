@@ -1,10 +1,12 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Search, Briefcase, Users, TrendingUp, ArrowRight, Loader2, Sparkles, MapPin, Building2, BarChart3, Clock } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { Search, Briefcase, Users, TrendingUp, ArrowRight, Loader2, Sparkles, MapPin, Building2, BarChart3, Clock, Mail, Send } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { toast } from "sonner";
 import { generateJobLeads } from "@/src/services/aiService";
@@ -24,6 +26,138 @@ interface JobLead {
   sourceUrl: string;
   matchScore?: number;
   leads: { name: string; role: string; type: string }[];
+}
+
+interface LeadCardProps {
+  lead: JobLead;
+  index: number;
+  key?: React.Key;
+}
+
+function LeadCard({ lead, index }: LeadCardProps) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: index * 0.05 }}
+    >
+      <Card className="group border-border hover:shadow-md transition-all duration-200 bg-white rounded-2xl overflow-hidden">
+        <CardContent className="p-0">
+          <div className="flex flex-col lg:flex-row">
+            <div className="p-5 md:p-6 flex-1 space-y-4">
+              <div className="flex justify-between items-start gap-3">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Badge variant="secondary" className="bg-primary/10 text-primary border-0 text-[10px] font-black tracking-widest px-2 py-0.5">
+                       MATCH {lead.matchScore}%
+                    </Badge>
+                    {lead.matchScore && lead.matchScore > 80 && (
+                      <div className="h-1.5 w-1.5 rounded-full bg-accent animate-pulse" />
+                    )}
+                  </div>
+                  <h3 className="text-sm md:text-[15px] font-bold text-foreground leading-snug">{lead.title}</h3>
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-semibold text-muted-foreground">
+                    <span className="flex items-center gap-1"><Building2 className="h-3 w-3" />{lead.company}</span>
+                    <span className="hidden md:inline text-muted-foreground/30">&bull;</span>
+                    <span className="flex items-center gap-1"><MapPin className="h-3 w-3" />{lead.location}</span>
+                  </div>
+                </div>
+                <span className="text-sm font-bold text-primary whitespace-nowrap">
+                  {lead.salary}
+                </span>
+              </div>
+              
+              <p className="text-[11px] md:text-xs text-muted-foreground line-clamp-2 leading-relaxed">
+                {lead.description}
+              </p>
+
+              <div className="flex flex-wrap gap-2">
+                <span className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-[9px] font-bold tracking-tight">
+                  {lead.industry}
+                </span>
+                <span className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-[9px] font-bold tracking-tight">
+                  {lead.seniority}
+                </span>
+                {lead.requiredSkills.slice(0, 3).map(req => (
+                  <span key={req} className="px-2 py-0.5 bg-muted text-muted-foreground rounded text-[9px] font-bold tracking-tight">
+                    {req}
+                  </span>
+                ))}
+              </div>
+            </div>
+            <div className="lg:w-64 bg-slate-50/50 p-5 md:p-6 border-t lg:border-t-0 lg:border-l border-border flex flex-col justify-between">
+              <div className="space-y-4">
+                <h4 className="text-[9px] font-black uppercase tracking-widest text-muted-foreground mb-3">Targeted Leads</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-4">
+                  {lead.leads.map((contact, i) => (
+                    <div key={i} className="flex flex-col gap-2">
+                      <div className="flex items-center gap-3">
+                        <div className="h-8 w-8 rounded-full bg-white border border-border flex items-center justify-center text-[10px] font-bold text-slate-500 shrink-0 shadow-sm">
+                          {contact.name.split(' ').map(n => n[0]).join('')}
+                        </div>
+                        <div className="flex flex-col min-w-0 flex-1">
+                          <span className="text-xs font-bold text-foreground truncate">{contact.name}</span>
+                          <span className="text-[10px] text-muted-foreground truncate font-medium">{contact.role}</span>
+                        </div>
+                        <Dialog>
+                          <DialogTrigger
+                            render={
+                              <Button variant="ghost" size="icon" className="h-7 w-7 rounded-lg shrink-0" />
+                            }
+                          >
+                            <Mail className="h-3.5 w-3.5 text-primary" />
+                          </DialogTrigger>
+                          <DialogContent className="sm:max-w-[425px]">
+                            <DialogHeader>
+                              <DialogTitle>Contact {contact.name}</DialogTitle>
+                              <DialogDescription>
+                                Compose a message to pitch your relevant candidates for the {lead.title} role.
+                              </DialogDescription>
+                            </DialogHeader>
+                            <div className="grid gap-4 py-4">
+                              <div className="flex items-center gap-2 mb-2 p-3 bg-slate-50 rounded-lg border border-border">
+                                <div className="h-8 w-8 rounded-full bg-white border border-border flex items-center justify-center text-[10px] font-bold text-slate-500 shrink-0 shadow-sm">
+                                  {contact.name.split(' ').map(n => n[0]).join('')}
+                                </div>
+                                <div className="flex flex-col min-w-0">
+                                  <span className="text-xs font-bold text-foreground truncate">{contact.name}</span>
+                                  <span className="text-[10px] text-muted-foreground truncate font-medium">{contact.role} @ {lead.company}</span>
+                                </div>
+                              </div>
+                              <Textarea
+                                placeholder="Draft your message..."
+                                className="min-h-[150px] resize-none text-sm"
+                                defaultValue={`Hi ${contact.name.split(' ')[0]},\n\nI noticed the ${lead.title} opening at ${lead.company} and we have strong candidates who perfectly match your requirements, particularly in ${lead.industry}.\n\nAre you open to seeing some profiles?`}
+                              />
+                            </div>
+                            <DialogFooter>
+                              <Button type="submit" className="w-full sm:w-auto flex items-center gap-2 text-xs font-bold" onClick={() => toast.success("Message queued for delivery!")}>
+                                <Send className="h-3.5 w-3.5" />
+                                Send Message
+                              </Button>
+                            </DialogFooter>
+                          </DialogContent>
+                        </Dialog>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="mt-6 flex items-center justify-between text-[9px] font-bold text-muted-foreground opacity-70">
+                 <div className="flex items-center gap-1">
+                    <Clock className="h-3 w-3" />
+                    {new Date(lead.scrapedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                 </div>
+                 <div className="flex items-center gap-1 hover:text-primary cursor-pointer transition-colors">
+                    Via OpenClaw
+                 </div>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </motion.div>
+  );
 }
 
 export function Dashboard() {
@@ -112,11 +246,31 @@ export function Dashboard() {
               <div className="flex items-center justify-between mb-6">
                 <TabsList className="bg-transparent border border-border p-1 rounded-xl h-10">
                   <TabsTrigger value="all" className="rounded-lg px-5 text-xs font-bold data-[state=active]:bg-primary data-[state=active]:text-white">Active Opportunities</TabsTrigger>
+                  <TabsTrigger value="all-leads" className="rounded-lg px-5 text-xs font-bold data-[state=active]:bg-primary data-[state=active]:text-white">All Leads</TabsTrigger>
                   <TabsTrigger value="specialized" className="rounded-lg px-5 text-xs font-bold data-[state=active]:bg-primary data-[state=active]:text-white">Profile Matched</TabsTrigger>
                 </TabsList>
               </div>
 
               <TabsContent value="all" className="mt-0 space-y-4">
+                <AnimatePresence mode="popLayout">
+                  {leads.filter(l => (l.matchScore || 0) > 60).length === 0 ? (
+                    <motion.div 
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      className="text-center py-24 bg-white border border-dashed border-border rounded-2xl"
+                    >
+                      <Search className="h-10 w-10 mx-auto text-muted-foreground/30 mb-4" />
+                      <p className="text-muted-foreground font-medium text-sm">No high-match opportunities found. Try a new search.</p>
+                    </motion.div>
+                  ) : (
+                    leads.filter(l => (l.matchScore || 0) > 60).map((lead, index) => (
+                      <LeadCard key={lead.id} lead={lead} index={index} />
+                    ))
+                  )}
+                </AnimatePresence>
+              </TabsContent>
+
+              <TabsContent value="all-leads" className="mt-0 space-y-4">
                 <AnimatePresence mode="popLayout">
                   {leads.length === 0 ? (
                     <motion.div 
@@ -129,87 +283,26 @@ export function Dashboard() {
                     </motion.div>
                   ) : (
                     leads.map((lead, index) => (
-                      <motion.div
-                        key={lead.id}
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: index * 0.05 }}
-                      >
-                        <Card className="group border-border hover:shadow-md transition-all duration-200 bg-white rounded-2xl overflow-hidden">
-                          <CardContent className="p-0">
-                            <div className="flex flex-col lg:flex-row">
-                              <div className="p-5 md:p-6 flex-1 space-y-4">
-                                <div className="flex justify-between items-start gap-3">
-                                  <div className="space-y-1">
-                                    <div className="flex items-center gap-2 mb-1">
-                                      <Badge variant="secondary" className="bg-primary/10 text-primary border-0 text-[10px] font-black tracking-widest px-2 py-0.5">
-                                         MATCH {lead.matchScore}%
-                                      </Badge>
-                                      {lead.matchScore && lead.matchScore > 80 && (
-                                        <div className="h-1.5 w-1.5 rounded-full bg-accent animate-pulse" />
-                                      )}
-                                    </div>
-                                    <h3 className="text-sm md:text-[15px] font-bold text-foreground leading-snug">{lead.title}</h3>
-                                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-semibold text-muted-foreground">
-                                      <span className="flex items-center gap-1"><Building2 className="h-3 w-3" />{lead.company}</span>
-                                      <span className="hidden md:inline text-muted-foreground/30">&bull;</span>
-                                      <span className="flex items-center gap-1"><MapPin className="h-3 w-3" />{lead.location}</span>
-                                    </div>
-                                  </div>
-                                  <span className="text-sm font-bold text-primary whitespace-nowrap">
-                                    {lead.salary}
-                                  </span>
-                                </div>
-                                
-                                <p className="text-[11px] md:text-xs text-muted-foreground line-clamp-2 leading-relaxed">
-                                  {lead.description}
-                                </p>
+                      <LeadCard key={lead.id} lead={lead} index={index} />
+                    ))
+                  )}
+                </AnimatePresence>
+              </TabsContent>
 
-                                <div className="flex flex-wrap gap-2">
-                                  <span className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-[9px] font-bold tracking-tight">
-                                    {lead.industry}
-                                  </span>
-                                  <span className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-[9px] font-bold tracking-tight">
-                                    {lead.seniority}
-                                  </span>
-                                  {lead.requiredSkills.slice(0, 3).map(req => (
-                                    <span key={req} className="px-2 py-0.5 bg-muted text-muted-foreground rounded text-[9px] font-bold tracking-tight">
-                                      {req}
-                                    </span>
-                                  ))}
-                                </div>
-                              </div>
-                              <div className="lg:w-64 bg-slate-50/50 p-5 md:p-6 border-t lg:border-t-0 lg:border-l border-border flex flex-col justify-between">
-                                <div className="space-y-4">
-                                  <h4 className="text-[9px] font-black uppercase tracking-widest text-muted-foreground mb-3">Targeted Leads</h4>
-                                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-4">
-                                    {lead.leads.map((contact, i) => (
-                                      <div key={i} className="flex items-center gap-3">
-                                        <div className="h-8 w-8 rounded-full bg-white border border-border flex items-center justify-center text-[10px] font-bold text-slate-500 shrink-0 shadow-sm">
-                                          {contact.name.split(' ').map(n => n[0]).join('')}
-                                        </div>
-                                        <div className="flex flex-col min-w-0">
-                                          <span className="text-xs font-bold text-foreground truncate">{contact.name}</span>
-                                          <span className="text-[10px] text-muted-foreground truncate font-medium">{contact.role}</span>
-                                        </div>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                                <div className="mt-6 flex items-center justify-between text-[9px] font-bold text-muted-foreground opacity-70">
-                                   <div className="flex items-center gap-1">
-                                      <Clock className="h-3 w-3" />
-                                      {new Date(lead.scrapedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                   </div>
-                                   <div className="flex items-center gap-1 hover:text-primary cursor-pointer transition-colors">
-                                      Via OpenClaw
-                                   </div>
-                                </div>
-                              </div>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      </motion.div>
+              <TabsContent value="specialized" className="mt-0 space-y-4">
+                <AnimatePresence mode="popLayout">
+                  {leads.filter(l => (l.matchScore || 0) > 85).length === 0 ? (
+                    <motion.div 
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      className="text-center py-24 bg-white border border-dashed border-border rounded-2xl"
+                    >
+                      <Sparkles className="h-10 w-10 mx-auto text-muted-foreground/30 mb-4" />
+                      <p className="text-muted-foreground font-medium text-sm">No perfect profile matches identified yet.</p>
+                    </motion.div>
+                  ) : (
+                    leads.filter(l => (l.matchScore || 0) > 85).map((lead, index) => (
+                      <LeadCard key={lead.id} lead={lead} index={index} />
                     ))
                   )}
                 </AnimatePresence>
