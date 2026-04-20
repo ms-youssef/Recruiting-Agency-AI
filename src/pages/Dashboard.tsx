@@ -9,9 +9,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Search, Briefcase, Users, TrendingUp, ArrowRight, Loader2, Sparkles, MapPin, Building2, BarChart3, Clock, Mail, Send, Globe, Linkedin, Phone } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { toast } from "sonner";
-import { generateJobLeads } from "@/src/services/aiService";
+import { fetchLeadStatus, fetchRunStatus, generateJobLeads } from "@/src/services/aiService";
 import { rankLeads } from "@/src/lib/matching";
-import type { JobLead } from "@/src/types";
+import type { JobLead, LeadRunSummary, LeadStatusSnapshot } from "@/src/types";
 
 interface LeadCardProps {
   lead: JobLead;
@@ -20,6 +20,7 @@ interface LeadCardProps {
 }
 
 function LeadCard({ lead, index }: LeadCardProps) {
+  const liveStatus = (lead as any).liveStatus;
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
@@ -63,6 +64,21 @@ function LeadCard({ lead, index }: LeadCardProps) {
                 <span className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-[9px] font-bold tracking-tight">
                   {lead.seniority}
                 </span>
+                {liveStatus?.qualification_status && (
+                  <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-[9px] font-bold tracking-tight">
+                    {liveStatus.qualification_status}
+                  </span>
+                )}
+                {liveStatus?.dedupe_status && (
+                  <span className="px-2 py-0.5 bg-amber-50 text-amber-700 rounded text-[9px] font-bold tracking-tight">
+                    {liveStatus.dedupe_status}
+                  </span>
+                )}
+                {liveStatus?.enrichment_status && (
+                  <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded text-[9px] font-bold tracking-tight">
+                    {liveStatus.enrichment_status}
+                  </span>
+                )}
                 {lead.requiredSkills.slice(0, 3).map(req => (
                   <span key={req} className="px-2 py-0.5 bg-muted text-muted-foreground rounded text-[9px] font-bold tracking-tight">
                     {req}
@@ -116,7 +132,7 @@ function LeadCard({ lead, index }: LeadCardProps) {
                                 <Linkedin className="h-3 w-3" /> LinkedIn profile
                               </a>
                             )}
-                            <span className="text-[10px] font-semibold text-muted-foreground">SignalHire: {contact.signalHireStatus || "pending"}</span>
+                            <span className="text-[10px] font-semibold text-muted-foreground break-all">SignalHire: {contact.signalHireStatus || "pending"}</span>
                           </div>
                         </div>
                         <Dialog>
@@ -184,6 +200,9 @@ export function Dashboard() {
   const [profile, setProfile] = useState<{ name: string; sectors: string[] } | null>(null);
   const [leads, setLeads] = useState<JobLead[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [runId, setRunId] = useState<number | null>(null);
+  const [runSummary, setRunSummary] = useState<LeadRunSummary | null>(null);
+  const [liveStatuses, setLiveStatuses] = useState<Record<string, LeadStatusSnapshot>>({});
 
   useEffect(() => {
     const saved = localStorage.getItem("agency_profile");
@@ -195,22 +214,26 @@ export function Dashboard() {
   const triggerDiscover = async () => {
     if (!profile) return;
     setIsSearching(true);
+    setRunSummary(null);
+    setLiveStatuses({});
     try {
-      const results = await generateJobLeads(
+      const response = await generateJobLeads(
         profile.sectors.join(", "),
         profile.name
       );
-      
-      // Step 2: SignalHire Enrichment Phase
-      toast.info("Kimo: Accessing SignalHire for verified contacts...", {
+
+      setRunId(response.runId || null);
+      setRunSummary(response.summary || null);
+
+      toast.info("Kimo: scraping, qualifying, deduping, and queueing SignalHire enrichment...", {
         icon: <Loader2 className="h-4 w-4 animate-spin text-primary" />,
-        duration: 2000
+        duration: 2500
       });
-      
-      const ranked = rankLeads(profile, results);
+
+      const ranked = rankLeads(profile, response.results || []);
       setLeads(ranked);
       setIsSearching(false);
-      
+
       if (ranked.length > 0) {
         toast.success(`Kimo identified and ranked ${ranked.length} strategic leads.`);
       } else {
@@ -222,6 +245,56 @@ export function Dashboard() {
       toast.error("Failed to connect to Kimo");
     }
   };
+
+  useEffect(() => {
+    if (!runId) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const runStatus = await fetchRunStatus(runId);
+        setRunSummary({
+          pulled: runStatus.run?.pulled_count || 0,
+          qualified: runStatus.run?.qualified_count || 0,
+          deduped: runStatus.run?.deduped_count || 0,
+          enriched: runStatus.run?.enriched_count || 0,
+        });
+
+        const statusMap: Record<string, LeadStatusSnapshot> = {};
+        for (const lead of runStatus.leads || []) {
+          statusMap[lead.id] = lead;
+        }
+
+        for (const lead of leads) {
+          try {
+            const leadStatus = await fetchLeadStatus(lead.id);
+            if (leadStatus?.lead) {
+              statusMap[lead.id] = {
+                id: lead.id,
+                company: lead.company,
+                title: lead.title,
+                qualification_status: leadStatus.lead.qualification_status,
+                dedupe_status: leadStatus.lead.dedupe_status,
+                enrichment_status: leadStatus.lead.enrichment_status,
+                updated_at: leadStatus.lead.updated_at,
+              };
+            }
+          } catch {
+            // keep polling resilient per lead
+          }
+        }
+
+        setLiveStatuses(statusMap);
+
+        if (runStatus.run?.run_status === "completed") {
+          clearInterval(interval);
+        }
+      } catch {
+        clearInterval(interval);
+      }
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [runId, leads]);
 
   if (!profile) {
     return (
@@ -265,15 +338,33 @@ export function Dashboard() {
         </div>
       </header>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 space-y-6">
+      {runSummary && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+          {[
+            ["Pulled", runSummary.pulled],
+            ["Qualified", runSummary.qualified],
+            ["Deduped", runSummary.deduped],
+            ["Enriched", runSummary.enriched],
+          ].map(([label, value]) => (
+            <Card key={String(label)} className="rounded-2xl border-border bg-white shadow-sm">
+              <CardContent className="p-4 md:p-5">
+                <div className="text-[10px] md:text-xs font-bold uppercase tracking-widest text-muted-foreground">{label}</div>
+                <div className="mt-2 text-xl md:text-2xl font-bold text-foreground">{value}</div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 md:gap-8">
+        <div className="xl:col-span-2 space-y-6 min-w-0">
           <Card className="border-none shadow-none bg-transparent">
             <Tabs defaultValue="all" className="w-full">
-              <div className="flex items-center justify-between mb-6">
-                <TabsList className="bg-transparent border border-border p-1 rounded-xl h-10">
-                  <TabsTrigger value="all" className="rounded-lg px-5 text-xs font-bold data-[state=active]:bg-primary data-[state=active]:text-white">Active Opportunities</TabsTrigger>
-                  <TabsTrigger value="all-leads" className="rounded-lg px-5 text-xs font-bold data-[state=active]:bg-primary data-[state=active]:text-white">All Leads</TabsTrigger>
-                  <TabsTrigger value="specialized" className="rounded-lg px-5 text-xs font-bold data-[state=active]:bg-primary data-[state=active]:text-white">Profile Matched</TabsTrigger>
+              <div className="mb-6 overflow-x-auto pb-2">
+                <TabsList className="inline-flex min-w-max bg-transparent border border-border p-1 rounded-xl h-10">
+                  <TabsTrigger value="all" className="rounded-lg px-4 md:px-5 text-xs font-bold data-[state=active]:bg-primary data-[state=active]:text-white">Active Opportunities</TabsTrigger>
+                  <TabsTrigger value="all-leads" className="rounded-lg px-4 md:px-5 text-xs font-bold data-[state=active]:bg-primary data-[state=active]:text-white">All Leads</TabsTrigger>
+                  <TabsTrigger value="specialized" className="rounded-lg px-4 md:px-5 text-xs font-bold data-[state=active]:bg-primary data-[state=active]:text-white">Profile Matched</TabsTrigger>
                 </TabsList>
               </div>
 
@@ -290,7 +381,7 @@ export function Dashboard() {
                     </motion.div>
                   ) : (
                     leads.filter(l => (l.matchScore || 0) > 60).map((lead, index) => (
-                      <LeadCard key={lead.id} lead={lead} index={index} />
+                      <LeadCard key={lead.id} lead={{ ...lead, liveStatus: liveStatuses[lead.id] }} index={index} />
                     ))
                   )}
                 </AnimatePresence>
@@ -309,7 +400,7 @@ export function Dashboard() {
                     </motion.div>
                   ) : (
                     leads.map((lead, index) => (
-                      <LeadCard key={lead.id} lead={lead} index={index} />
+                      <LeadCard key={lead.id} lead={{ ...lead, liveStatus: liveStatuses[lead.id] }} index={index} />
                     ))
                   )}
                 </AnimatePresence>
@@ -328,7 +419,7 @@ export function Dashboard() {
                     </motion.div>
                   ) : (
                     leads.filter(l => (l.matchScore || 0) > 85).map((lead, index) => (
-                      <LeadCard key={lead.id} lead={lead} index={index} />
+                      <LeadCard key={lead.id} lead={{ ...lead, liveStatus: liveStatuses[lead.id] }} index={index} />
                     ))
                   )}
                 </AnimatePresence>
@@ -337,7 +428,7 @@ export function Dashboard() {
           </Card>
         </div>
 
-        <div className="space-y-6">
+        <div className="space-y-6 min-w-0">
           <Card className="border-border shadow-sm rounded-2xl bg-white overflow-hidden">
             <CardHeader className="pb-4">
               <CardTitle className="text-sm font-bold text-foreground">Kimo Market Pulse</CardTitle>

@@ -17,11 +17,11 @@ export function Navbar() {
 
   const NavContent = () => (
     <div className="flex flex-col h-full bg-white">
-      <div className="flex items-center gap-3 mb-10 px-2">
+      <div className="flex items-center gap-3 mb-8 px-2">
         <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-white shadow-lg shadow-primary/20">
           <Globe className="h-6 w-6" />
         </div>
-        <span className="text-xl font-extrabold tracking-tight text-foreground">TalentLink Kimo</span>
+        <span className="text-lg xl:text-xl font-extrabold tracking-tight text-foreground leading-tight">TalentLink Kimo</span>
       </div>
 
       <div className="flex-1 space-y-8">
@@ -87,8 +87,8 @@ export function Navbar() {
   return (
     <>
       {/* Desktop Sidebar */}
-      <aside className="hidden lg:flex w-72 h-screen sticky top-0 border-r border-border bg-white flex-col shrink-0">
-        <div className="p-8 h-full">
+      <aside className="hidden lg:flex w-64 xl:w-72 h-screen sticky top-0 border-r border-border bg-white flex-col shrink-0">
+        <div className="p-6 xl:p-8 h-full">
           <NavContent />
         </div>
       </aside>
@@ -99,7 +99,7 @@ export function Navbar() {
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-white">
             <Globe className="h-5 w-5" />
           </div>
-          <span className="text-lg font-extrabold tracking-tight">TalentLink</span>
+          <span className="text-base sm:text-lg font-extrabold tracking-tight">TalentLink</span>
         </div>
 
         <Sheet open={open} onOpenChange={setOpen}>

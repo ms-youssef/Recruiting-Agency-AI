@@ -6,7 +6,25 @@ export interface DecisionMaker {
   phone?: string;
   bio?: string;
   linkedinProfile?: string;
-  signalHireStatus?: "verified" | "pending" | "unavailable";
+  signalHireRequestId?: number | null;
+  signalHireStatus?: string;
+}
+
+export interface LeadRunSummary {
+  pulled: number;
+  qualified: number;
+  deduped: number;
+  enriched: number;
+}
+
+export interface LeadStatusSnapshot {
+  id: string;
+  company: string;
+  title: string;
+  qualification_status?: string;
+  dedupe_status?: string;
+  enrichment_status?: string;
+  updated_at?: string;
 }
 
 export interface CompanyInfo {
