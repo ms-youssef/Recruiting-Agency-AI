@@ -3,7 +3,7 @@ import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
 import { execSync } from "child_process";
-import { pool, initDb } from "./db.js";
+import { pool, initDb, getDefaultTenantId } from "./db.js";
 
 // Initialize DB
 initDb().catch(console.error);
@@ -155,19 +155,38 @@ async function startServer() {
       const output = execSync(`python3 kimo_engine.py "${sector}"`, { encoding: 'utf8' });
       const results = JSON.parse(output);
 
-      // Store in PostgreSQL
+      const tenantId = await getDefaultTenantId();
+
+      // Store in PostgreSQL with tenant isolation
       for (const lead of results) {
         await pool.query(
-          `INSERT INTO job_leads (id, company, title, industry, seniority, salary, location, data)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-           ON CONFLICT (id) DO UPDATE SET data = $8`,
-          [lead.id, lead.company, lead.title, lead.industry, lead.seniority, lead.salary, lead.location, lead]
+          `INSERT INTO job_leads (id, tenant_id, company, title, industry, seniority, salary, location, source_url, data)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+           ON CONFLICT (id) DO UPDATE SET
+             tenant_id = EXCLUDED.tenant_id,
+             company = EXCLUDED.company,
+             title = EXCLUDED.title,
+             industry = EXCLUDED.industry,
+             seniority = EXCLUDED.seniority,
+             salary = EXCLUDED.salary,
+             location = EXCLUDED.location,
+             source_url = EXCLUDED.source_url,
+             data = EXCLUDED.data,
+             updated_at = CURRENT_TIMESTAMP`,
+          [lead.id, tenantId, lead.company, lead.title, lead.industry, lead.seniority, lead.salary, lead.location, lead.sourceUrl, lead]
+        );
+
+        await pool.query(
+          `INSERT INTO activities (tenant_id, entity_type, entity_id, action, payload)
+           VALUES ($1, 'job_lead', $2, 'discover_jobs', $3)`,
+          [tenantId, lead.id, { sector, services, company: lead.company, title: lead.title }]
         );
       }
 
       res.json({
         status: "success",
         agent: "Kimo",
+        tenant: "nts-demo",
         results: results
       });
     } catch (error) {
