@@ -4,6 +4,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { execSync } from "child_process";
 import { pool, initDb, getDefaultTenantId } from "./db.js";
+import { runPrdLoop } from "./prd_loop.js";
 
 // Initialize DB
 initDb().catch(console.error);
@@ -148,46 +149,22 @@ async function startServer() {
 
   app.post("/api/discover-jobs", async (req, res) => {
     const { sector, services } = req.body;
-    console.log(`Kimo: Starting LIVE discovery for ${sector}...`);
+    console.log(`Kimo: Starting PRD loop for ${sector}...`);
 
     try {
-      // Execute Kimo's Python engine for live discovery
-      const output = execSync(`python3 kimo_engine.py "${sector}"`, { encoding: 'utf8' });
-      const results = JSON.parse(output);
-
-      const tenantId = await getDefaultTenantId();
-
-      // Store in PostgreSQL with tenant isolation
-      for (const lead of results) {
-        await pool.query(
-          `INSERT INTO job_leads (id, tenant_id, company, title, industry, seniority, salary, location, source_url, data)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-           ON CONFLICT (id) DO UPDATE SET
-             tenant_id = EXCLUDED.tenant_id,
-             company = EXCLUDED.company,
-             title = EXCLUDED.title,
-             industry = EXCLUDED.industry,
-             seniority = EXCLUDED.seniority,
-             salary = EXCLUDED.salary,
-             location = EXCLUDED.location,
-             source_url = EXCLUDED.source_url,
-             data = EXCLUDED.data,
-             updated_at = CURRENT_TIMESTAMP`,
-          [lead.id, tenantId, lead.company, lead.title, lead.industry, lead.seniority, lead.salary, lead.location, lead.sourceUrl, lead]
-        );
-
-        await pool.query(
-          `INSERT INTO activities (tenant_id, entity_type, entity_id, action, payload)
-           VALUES ($1, 'job_lead', $2, 'discover_jobs', $3)`,
-          [tenantId, lead.id, { sector, services, company: lead.company, title: lead.title }]
-        );
-      }
-
+      const loopResult = await runPrdLoop(sector || "Recruitment", services || "Unknown agency");
       res.json({
         status: "success",
         agent: "Kimo",
         tenant: "nts-demo",
-        results: results
+        runId: loopResult.runId,
+        summary: {
+          pulled: loopResult.pulledCount,
+          qualified: loopResult.qualifiedCount,
+          deduped: loopResult.dedupedCount,
+          enriched: loopResult.enrichedCount,
+        },
+        results: loopResult.results,
       });
     } catch (error) {
       console.error("Kimo Engine Error:", error);

@@ -54,7 +54,7 @@ export async function initDb() {
     await client.query(`
       CREATE TABLE IF NOT EXISTS job_leads (
         id TEXT PRIMARY KEY,
-        tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        tenant_id INTEGER REFERENCES tenants(id) ON DELETE CASCADE,
         company TEXT,
         title TEXT,
         industry TEXT,
@@ -62,11 +62,87 @@ export async function initDb() {
         salary TEXT,
         location TEXT,
         source_url TEXT,
+        qualification_score NUMERIC(3,2),
+        qualification_status TEXT,
+        qualification_reason TEXT,
+        dedupe_status TEXT DEFAULT 'new',
+        enrichment_status TEXT DEFAULT 'pending',
         data JSONB,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
+
+    await client.query(`ALTER TABLE job_leads ADD COLUMN IF NOT EXISTS tenant_id INTEGER REFERENCES tenants(id) ON DELETE CASCADE;`);
+    await client.query(`ALTER TABLE job_leads ADD COLUMN IF NOT EXISTS source_url TEXT;`);
+    await client.query(`ALTER TABLE job_leads ADD COLUMN IF NOT EXISTS qualification_score NUMERIC(3,2);`);
+    await client.query(`ALTER TABLE job_leads ADD COLUMN IF NOT EXISTS qualification_status TEXT;`);
+    await client.query(`ALTER TABLE job_leads ADD COLUMN IF NOT EXISTS qualification_reason TEXT;`);
+    await client.query(`ALTER TABLE job_leads ADD COLUMN IF NOT EXISTS dedupe_status TEXT DEFAULT 'new';`);
+    await client.query(`ALTER TABLE job_leads ADD COLUMN IF NOT EXISTS enrichment_status TEXT DEFAULT 'pending';`);
+    await client.query(`ALTER TABLE job_leads ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;`);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS contacts (
+        id SERIAL PRIMARY KEY,
+        tenant_id INTEGER REFERENCES tenants(id) ON DELETE CASCADE,
+        lead_id TEXT REFERENCES job_leads(id) ON DELETE CASCADE,
+        full_name TEXT NOT NULL,
+        role TEXT,
+        contact_type TEXT,
+        email TEXT,
+        phone TEXT,
+        bio TEXT,
+        linkedin_profile TEXT,
+        signalhire_status TEXT DEFAULT 'pending',
+        raw_data JSONB,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    await client.query(`ALTER TABLE contacts ADD COLUMN IF NOT EXISTS tenant_id INTEGER REFERENCES tenants(id) ON DELETE CASCADE;`);
+    await client.query(`ALTER TABLE contacts ADD COLUMN IF NOT EXISTS lead_id TEXT REFERENCES job_leads(id) ON DELETE CASCADE;`);
+    await client.query(`ALTER TABLE contacts ADD COLUMN IF NOT EXISTS full_name TEXT;`);
+    await client.query(`ALTER TABLE contacts ADD COLUMN IF NOT EXISTS role TEXT;`);
+    await client.query(`ALTER TABLE contacts ADD COLUMN IF NOT EXISTS contact_type TEXT;`);
+    await client.query(`ALTER TABLE contacts ADD COLUMN IF NOT EXISTS email TEXT;`);
+    await client.query(`ALTER TABLE contacts ADD COLUMN IF NOT EXISTS phone TEXT;`);
+    await client.query(`ALTER TABLE contacts ADD COLUMN IF NOT EXISTS bio TEXT;`);
+    await client.query(`ALTER TABLE contacts ADD COLUMN IF NOT EXISTS linkedin_profile TEXT;`);
+    await client.query(`ALTER TABLE contacts ADD COLUMN IF NOT EXISTS signalhire_status TEXT DEFAULT 'pending';`);
+    await client.query(`ALTER TABLE contacts ADD COLUMN IF NOT EXISTS raw_data JSONB;`);
+    await client.query(`ALTER TABLE contacts ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;`);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS scrape_runs (
+        id SERIAL PRIMARY KEY,
+        tenant_id INTEGER REFERENCES tenants(id) ON DELETE CASCADE,
+        sector TEXT,
+        services TEXT,
+        source TEXT DEFAULT 'kimo-engine',
+        run_status TEXT,
+        pulled_count INTEGER DEFAULT 0,
+        qualified_count INTEGER DEFAULT 0,
+        deduped_count INTEGER DEFAULT 0,
+        enriched_count INTEGER DEFAULT 0,
+        started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        completed_at TIMESTAMP,
+        metadata JSONB
+      );
+    `);
+
+    await client.query(`ALTER TABLE scrape_runs ADD COLUMN IF NOT EXISTS tenant_id INTEGER REFERENCES tenants(id) ON DELETE CASCADE;`);
+    await client.query(`ALTER TABLE scrape_runs ADD COLUMN IF NOT EXISTS sector TEXT;`);
+    await client.query(`ALTER TABLE scrape_runs ADD COLUMN IF NOT EXISTS services TEXT;`);
+    await client.query(`ALTER TABLE scrape_runs ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'kimo-engine';`);
+    await client.query(`ALTER TABLE scrape_runs ADD COLUMN IF NOT EXISTS run_status TEXT;`);
+    await client.query(`ALTER TABLE scrape_runs ADD COLUMN IF NOT EXISTS pulled_count INTEGER DEFAULT 0;`);
+    await client.query(`ALTER TABLE scrape_runs ADD COLUMN IF NOT EXISTS qualified_count INTEGER DEFAULT 0;`);
+    await client.query(`ALTER TABLE scrape_runs ADD COLUMN IF NOT EXISTS deduped_count INTEGER DEFAULT 0;`);
+    await client.query(`ALTER TABLE scrape_runs ADD COLUMN IF NOT EXISTS enriched_count INTEGER DEFAULT 0;`);
+    await client.query(`ALTER TABLE scrape_runs ADD COLUMN IF NOT EXISTS completed_at TIMESTAMP;`);
+    await client.query(`ALTER TABLE scrape_runs ADD COLUMN IF NOT EXISTS metadata JSONB;`);
 
     await client.query(`
       CREATE TABLE IF NOT EXISTS activities (
@@ -116,4 +192,9 @@ export async function getDefaultTenantId(): Promise<number> {
     throw new Error('Default tenant not found');
   }
   return result.rows[0].id;
+}
+
+export async function getTenantIcpConfig(tenantId: number) {
+  const result = await pool.query(`SELECT * FROM icp_configs WHERE tenant_id = $1 LIMIT 1;`, [tenantId]);
+  return result.rows[0] || null;
 }
