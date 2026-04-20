@@ -172,6 +172,86 @@ async function startServer() {
     }
   });
 
+  app.post("/api/signalhire/callback", async (req, res) => {
+    try {
+      const tenantId = await getDefaultTenantId();
+      const payload = Array.isArray(req.body) ? req.body : [req.body];
+      const requestIdHeader = req.header("Request-Id");
+      const requestId = requestIdHeader ? Number(requestIdHeader) : null;
+
+      await pool.query(
+        `INSERT INTO signalhire_callbacks (tenant_id, request_id, payload) VALUES ($1, $2, $3)`,
+        [tenantId, requestId, payload]
+      );
+
+      for (const item of payload) {
+        const candidate = item?.candidate || {};
+        const contacts = candidate?.contacts || [];
+        const social = candidate?.social || [];
+        const linkedinProfile = social.find((s: any) => s?.type === "li")?.link || item?.item || null;
+        const emails = contacts.filter((c: any) => c?.type === "email").map((c: any) => c.value).filter(Boolean);
+        const phones = contacts.filter((c: any) => c?.type === "phone").map((c: any) => c.value).filter(Boolean);
+
+        const existingContact = await pool.query(
+          `SELECT id, lead_id, raw_data FROM contacts WHERE tenant_id = $1 AND signalhire_request_id = $2 LIMIT 1`,
+          [tenantId, requestId]
+        );
+
+        const contactRow = existingContact.rows[0];
+        if (!contactRow) {
+          continue;
+        }
+
+        const previousRaw = contactRow.raw_data || {};
+        const mergedRaw = {
+          ...previousRaw,
+          signalHireCallback: item,
+        };
+
+        await pool.query(
+          `UPDATE contacts
+           SET email = COALESCE($1, email),
+               phone = COALESCE($2, phone),
+               bio = COALESCE($3, bio),
+               linkedin_profile = COALESCE($4, linkedin_profile),
+               signalhire_status = $5,
+               raw_data = $6,
+               updated_at = CURRENT_TIMESTAMP
+           WHERE id = $7`,
+          [
+            emails[0] || null,
+            phones[0] || null,
+            candidate?.summary || candidate?.headLine || null,
+            linkedinProfile,
+            item?.status === "success" ? "enriched" : item?.status || "failed",
+            mergedRaw,
+            contactRow.id,
+          ]
+        );
+
+        await pool.query(
+          `UPDATE job_leads
+           SET enrichment_status = $1,
+               data = jsonb_set(COALESCE(data, '{}'::jsonb), '{signalHireCallbackReceived}', 'true'::jsonb, true),
+               updated_at = CURRENT_TIMESTAMP
+           WHERE id = $2 AND tenant_id = $3`,
+          [item?.status === "success" ? "enriched" : "callback_received", contactRow.lead_id, tenantId]
+        );
+
+        await pool.query(
+          `INSERT INTO activities (tenant_id, entity_type, entity_id, action, payload)
+           VALUES ($1, 'job_lead', $2, 'signalhire_callback_processed', $3)`,
+          [tenantId, contactRow.lead_id, { requestId, status: item?.status, linkedinProfile }]
+        );
+      }
+
+      res.status(200).json({ status: "ok" });
+    } catch (error) {
+      console.error("SignalHire callback error:", error);
+      res.status(500).json({ status: "error" });
+    }
+  });
+
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {

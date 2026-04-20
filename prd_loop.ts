@@ -1,6 +1,9 @@
 import { execSync } from "child_process";
 import { pool, getDefaultTenantId, getTenantIcpConfig } from "./db.js";
 
+const SIGNALHIRE_API_KEY = process.env.SIGNALHIRE_API_KEY || "";
+const SIGNALHIRE_CALLBACK_URL = "https://callback.ntscompany.net/";
+
 type LeadRecord = {
   id: string;
   company: string;
@@ -60,17 +63,92 @@ function scoreLeadAgainstIcp(lead: LeadRecord, icp: any) {
   };
 }
 
-function enrichWithSignalHireOnly(lead: LeadRecord) {
-  const enrichedContacts = (lead.leads || []).map((contact) => ({
-    ...contact,
-    signalHireStatus: contact.signalHireStatus || "verified",
-    enrichmentSource: "SignalHire",
-  }));
+async function enrichWithSignalHireOnly(lead: LeadRecord) {
+  const contacts = lead.leads || [];
+
+  if (!SIGNALHIRE_API_KEY) {
+    return {
+      ...lead,
+      leads: contacts.map((contact) => ({
+        ...contact,
+        signalHireStatus: "missing_api_key",
+        enrichmentSource: "SignalHire",
+      })),
+      enrichmentStatus: "pending",
+    };
+  }
+
+  const enrichedContacts = [];
+
+  for (const contact of contacts) {
+    if (!contact.linkedinProfile) {
+      enrichedContacts.push({
+        ...contact,
+        signalHireStatus: "missing_linkedin",
+        enrichmentSource: "SignalHire",
+      });
+      continue;
+    }
+
+    try {
+      const response = await fetch("https://www.signalhire.com/api/v1/candidate/search", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: SIGNALHIRE_API_KEY,
+        },
+        body: JSON.stringify({
+          callbackUrl: SIGNALHIRE_CALLBACK_URL,
+          items: [contact.linkedinProfile],
+        }),
+      });
+
+      const rawText = await response.text();
+      const contentType = response.headers.get("content-type") || "";
+      let parsed: any = null;
+      let normalizedStatus = "queued";
+
+      if (contentType.includes("application/json")) {
+        try {
+          parsed = rawText ? JSON.parse(rawText) : null;
+        } catch {
+          parsed = { rawText };
+          normalizedStatus = "invalid_json_response";
+        }
+      } else {
+        parsed = null;
+        normalizedStatus = "unexpected_html_response";
+      }
+
+      if (!response.ok) {
+        normalizedStatus = `error_${response.status}`;
+      }
+
+      enrichedContacts.push({
+        ...contact,
+        signalHireStatus: normalizedStatus,
+        enrichmentSource: "SignalHire",
+        signalHireRequestId: parsed?.requestId || null,
+        signalHireResponse: parsed,
+      });
+    } catch (error: any) {
+      enrichedContacts.push({
+        ...contact,
+        signalHireStatus: "request_failed",
+        enrichmentSource: "SignalHire",
+        signalHireError: error?.message || "unknown_error",
+      });
+    }
+  }
 
   return {
     ...lead,
     leads: enrichedContacts,
-    enrichmentStatus: enrichedContacts.length ? "enriched" : "pending",
+    enrichmentStatus: enrichedContacts.some((contact) => contact.signalHireStatus === "queued")
+      ? "queued"
+      : enrichedContacts.some((contact) => contact.signalHireStatus === "unexpected_html_response")
+        ? "provider_error"
+        : "pending",
   };
 }
 
@@ -103,7 +181,7 @@ export async function runPrdLoop(sector: string, services: string) {
     );
     const isDuplicate = duplicateCheck.rowCount > 0;
 
-    const enrichedLead = enrichWithSignalHireOnly(lead);
+    const enrichedLead = await enrichWithSignalHireOnly(lead);
     if (qualification.status === "qualified") qualifiedCount += 1;
     if (isDuplicate) dedupedCount += 1;
     if (enrichedLead.enrichmentStatus === "enriched") enrichedCount += 1;
@@ -157,8 +235,8 @@ export async function runPrdLoop(sector: string, services: string) {
     for (const contact of enrichedLead.leads || []) {
       await pool.query(
         `INSERT INTO contacts (
-          tenant_id, lead_id, full_name, role, contact_type, email, phone, bio, linkedin_profile, signalhire_status, raw_data
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+          tenant_id, lead_id, full_name, role, contact_type, email, phone, bio, linkedin_profile, signalhire_request_id, signalhire_status, raw_data
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
         [
           tenantId,
           lead.id,
@@ -169,6 +247,7 @@ export async function runPrdLoop(sector: string, services: string) {
           contact.phone || null,
           contact.bio || null,
           contact.linkedinProfile || null,
+          contact.signalHireRequestId || null,
           contact.signalHireStatus || "pending",
           contact,
         ]

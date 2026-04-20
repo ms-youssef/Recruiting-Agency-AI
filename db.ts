@@ -94,12 +94,15 @@ export async function initDb() {
         phone TEXT,
         bio TEXT,
         linkedin_profile TEXT,
+        signalhire_request_id BIGINT,
         signalhire_status TEXT DEFAULT 'pending',
         raw_data JSONB,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
+
+    await client.query(`ALTER TABLE contacts ADD COLUMN IF NOT EXISTS signalhire_request_id BIGINT;`);
 
     await client.query(`ALTER TABLE contacts ADD COLUMN IF NOT EXISTS tenant_id INTEGER REFERENCES tenants(id) ON DELETE CASCADE;`);
     await client.query(`ALTER TABLE contacts ADD COLUMN IF NOT EXISTS lead_id TEXT REFERENCES job_leads(id) ON DELETE CASCADE;`);
@@ -129,6 +132,16 @@ export async function initDb() {
         started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         completed_at TIMESTAMP,
         metadata JSONB
+      );
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS signalhire_callbacks (
+        id SERIAL PRIMARY KEY,
+        tenant_id INTEGER REFERENCES tenants(id) ON DELETE CASCADE,
+        request_id BIGINT,
+        payload JSONB NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
 
