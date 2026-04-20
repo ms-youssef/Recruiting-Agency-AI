@@ -9,13 +9,7 @@ export interface AgencyProfile {
   experienceLevel?: string; // Optional expansion
 }
 
-export interface JobLead {
-  industry: string;
-  seniority: string;
-  requiredSkills: string[];
-  location: string;
-  title: string;
-}
+import type { JobLead } from "@/src/types";
 
 export function calculateMatchScore(agency: AgencyProfile, job: JobLead): number {
   let score = 0;

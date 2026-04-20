@@ -6,27 +6,12 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { Search, Briefcase, Users, TrendingUp, ArrowRight, Loader2, Sparkles, MapPin, Building2, BarChart3, Clock, Mail, Send } from "lucide-react";
+import { Search, Briefcase, Users, TrendingUp, ArrowRight, Loader2, Sparkles, MapPin, Building2, BarChart3, Clock, Mail, Send, Globe, Linkedin, Phone } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { toast } from "sonner";
 import { generateJobLeads } from "@/src/services/aiService";
 import { rankLeads } from "@/src/lib/matching";
-
-interface JobLead {
-  id: string;
-  company: string;
-  title: string;
-  description: string;
-  industry: string;
-  seniority: string;
-  salary: string;
-  location: string;
-  requiredSkills: string[];
-  scrapedAt: string;
-  sourceUrl: string;
-  matchScore?: number;
-  leads: { name: string; role: string; type: string }[];
-}
+import type { JobLead } from "@/src/types";
 
 interface LeadCardProps {
   lead: JobLead;
@@ -84,20 +69,55 @@ function LeadCard({ lead, index }: LeadCardProps) {
                   </span>
                 ))}
               </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-[11px] text-muted-foreground">
+                <div className="rounded-xl border border-border bg-slate-50/60 p-3 space-y-2">
+                  <div className="text-[10px] font-black uppercase tracking-widest text-foreground">Company Intel</div>
+                  <p className="leading-relaxed">{lead.companyInfo.about}</p>
+                  <div><strong>Size:</strong> {lead.companyInfo.companySize}</div>
+                  <div><strong>Employees:</strong> {lead.companyInfo.employeeCount}</div>
+                  <div><strong>HQ:</strong> {lead.companyInfo.headquarters}</div>
+                  <div className="flex flex-col gap-1 pt-1">
+                    <a href={lead.companyInfo.website} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">
+                      <Globe className="h-3 w-3" /> Company website
+                    </a>
+                    <a href={lead.companyInfo.linkedinProfile} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">
+                      <Linkedin className="h-3 w-3" /> Company LinkedIn
+                    </a>
+                  </div>
+                </div>
+                <div className="rounded-xl border border-border bg-slate-50/60 p-3 space-y-2">
+                  <div className="text-[10px] font-black uppercase tracking-widest text-foreground">Hiring Source</div>
+                  <div><strong>Role page:</strong> <a href={lead.sourceUrl} target="_blank" rel="noreferrer" className="text-primary hover:underline">Open source link</a></div>
+                  <div><strong>Last scan:</strong> {new Date(lead.scrapedAt).toLocaleString()}</div>
+                  <div><strong>Agent:</strong> Kimo</div>
+                </div>
+              </div>
             </div>
             <div className="lg:w-64 bg-slate-50/50 p-5 md:p-6 border-t lg:border-t-0 lg:border-l border-border flex flex-col justify-between">
               <div className="space-y-4">
                 <h4 className="text-[9px] font-black uppercase tracking-widest text-muted-foreground mb-3">Targeted Leads</h4>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-4">
                   {lead.leads.map((contact, i) => (
-                    <div key={i} className="flex flex-col gap-2">
-                      <div className="flex items-center gap-3">
+                    <div key={i} className="flex flex-col gap-2 rounded-xl border border-border bg-white/80 p-3">
+                      <div className="flex items-start gap-3">
                         <div className="h-8 w-8 rounded-full bg-white border border-border flex items-center justify-center text-[10px] font-bold text-slate-500 shrink-0 shadow-sm">
                           {contact.name.split(' ').map(n => n[0]).join('')}
                         </div>
-                        <div className="flex flex-col min-w-0 flex-1">
+                        <div className="flex flex-col min-w-0 flex-1 gap-1">
                           <span className="text-xs font-bold text-foreground truncate">{contact.name}</span>
                           <span className="text-[10px] text-muted-foreground truncate font-medium">{contact.role}</span>
+                          <span className="text-[10px] text-muted-foreground leading-relaxed">{contact.bio || "Bio pending enrichment."}</span>
+                          <div className="flex flex-col gap-1 pt-1 text-[10px]">
+                            {contact.email && <span className="inline-flex items-center gap-1"><Mail className="h-3 w-3" /> {contact.email}</span>}
+                            {contact.phone && <span className="inline-flex items-center gap-1"><Phone className="h-3 w-3" /> {contact.phone}</span>}
+                            {contact.linkedinProfile && (
+                              <a href={contact.linkedinProfile} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">
+                                <Linkedin className="h-3 w-3" /> LinkedIn profile
+                              </a>
+                            )}
+                            <span className="text-[10px] font-semibold text-muted-foreground">SignalHire: {contact.signalHireStatus || "pending"}</span>
+                          </div>
                         </div>
                         <Dialog>
                           <DialogTrigger
@@ -149,7 +169,7 @@ function LeadCard({ lead, index }: LeadCardProps) {
                     {new Date(lead.scrapedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                  </div>
                  <div className="flex items-center gap-1 hover:text-primary cursor-pointer transition-colors">
-                    Via OpenClaw
+                   Via Kimo
                  </div>
               </div>
             </div>
@@ -181,19 +201,25 @@ export function Dashboard() {
         profile.name
       );
       
+      // Step 2: SignalHire Enrichment Phase
+      toast.info("Kimo: Accessing SignalHire for verified contacts...", {
+        icon: <Loader2 className="h-4 w-4 animate-spin text-primary" />,
+        duration: 2000
+      });
+      
       const ranked = rankLeads(profile, results);
       setLeads(ranked);
       setIsSearching(false);
       
       if (ranked.length > 0) {
-        toast.success(`OpenClaw identified and ranked ${ranked.length} strategic leads!`);
+        toast.success(`Kimo identified and ranked ${ranked.length} strategic leads.`);
       } else {
-        toast.error("OpenClaw couldn't find matching leads in the current scrape.");
+        toast.error("Kimo couldn't find matching leads in the current scan.");
       }
     } catch (error) {
       console.error(error);
       setIsSearching(false);
-      toast.error("Failed to connect to AI agent");
+      toast.error("Failed to connect to Kimo");
     }
   };
 
@@ -220,13 +246,13 @@ export function Dashboard() {
             Recruitment Intelligence
           </h1>
           <p className="text-xs md:text-sm text-muted-foreground">
-            Real-time job mapping for <strong className="text-foreground">{profile.name}</strong>
+            Kimo is mapping live recruitment opportunities for <strong className="text-foreground">{profile.name}</strong>
           </p>
         </div>
         <div className="flex flex-col sm:items-end gap-2">
           <div className="inline-flex items-center gap-2 px-3 py-1 bg-emerald-50 text-accent rounded-full text-[10px] md:text-xs font-bold border border-emerald-100 shadow-sm w-fit">
             <div className="h-1.5 w-1.5 rounded-full bg-accent animate-pulse" />
-            OpenClaw Scanning LinkedIn
+            Kimo Scanning Hiring Signals
           </div>
           <Button 
             onClick={triggerDiscover} 
@@ -260,7 +286,7 @@ export function Dashboard() {
                       className="text-center py-24 bg-white border border-dashed border-border rounded-2xl"
                     >
                       <Search className="h-10 w-10 mx-auto text-muted-foreground/30 mb-4" />
-                      <p className="text-muted-foreground font-medium text-sm">No high-match opportunities found. Try a new search.</p>
+                      <p className="text-muted-foreground font-medium text-sm">No high-match opportunities found yet. Run a new Kimo search.</p>
                     </motion.div>
                   ) : (
                     leads.filter(l => (l.matchScore || 0) > 60).map((lead, index) => (
@@ -279,7 +305,7 @@ export function Dashboard() {
                       className="text-center py-24 bg-white border border-dashed border-border rounded-2xl"
                     >
                       <Search className="h-10 w-10 mx-auto text-muted-foreground/30 mb-4" />
-                      <p className="text-muted-foreground font-medium text-sm">No results yet. Start a discovery scan.</p>
+                      <p className="text-muted-foreground font-medium text-sm">No results yet. Start a Kimo discovery scan.</p>
                     </motion.div>
                   ) : (
                     leads.map((lead, index) => (
@@ -314,7 +340,7 @@ export function Dashboard() {
         <div className="space-y-6">
           <Card className="border-border shadow-sm rounded-2xl bg-white overflow-hidden">
             <CardHeader className="pb-4">
-              <CardTitle className="text-sm font-bold text-foreground">Market Pulse</CardTitle>
+              <CardTitle className="text-sm font-bold text-foreground">Kimo Market Pulse</CardTitle>
             </CardHeader>
             <CardContent className="space-y-5">
               <div className="flex items-center justify-between border-b border-border pb-4">

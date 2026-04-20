@@ -21,7 +21,7 @@ export function Navbar() {
         <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-white shadow-lg shadow-primary/20">
           <Globe className="h-6 w-6" />
         </div>
-        <span className="text-xl font-extrabold tracking-tight text-foreground">TalentLink</span>
+        <span className="text-xl font-extrabold tracking-tight text-foreground">TalentLink Kimo</span>
       </div>
 
       <div className="flex-1 space-y-8">
@@ -69,10 +69,10 @@ export function Navbar() {
         <div className="rounded-2xl bg-slate-50 border border-border p-5 space-y-3">
           <div className="flex items-center gap-2">
             <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="text-xs font-black text-foreground uppercase tracking-widest">OpenClaw Live</span>
+            <span className="text-xs font-black text-foreground uppercase tracking-widest">Kimo Live</span>
           </div>
           <p className="text-[10px] text-muted-foreground leading-relaxed font-medium">
-            Active indexing LinkedIn Data Pool. Last global sync: 2 mins ago.
+            Active recruitment intelligence engine for job posts, HR teams, and C-level mapping.
           </p>
           <Separator className="bg-border/50" />
           <div className="flex items-center justify-between">

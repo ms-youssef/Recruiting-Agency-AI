@@ -54,7 +54,7 @@ export function Onboarding() {
             <div className="space-y-1 text-center">
               <CardTitle className="text-xl md:text-2xl font-bold tracking-tight text-foreground">System Initialization</CardTitle>
               <CardDescription className="text-xs md:text-sm text-muted-foreground max-w-[280px] mx-auto">
-                Configure your agency parameters to activate the OpenClaw agent.
+                Configure your agency parameters to activate Kimo for recruitment intelligence.
               </CardDescription>
             </div>
           </CardHeader>
